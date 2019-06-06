@@ -1,5 +1,7 @@
-## SpliceAI: A deep learning-based tool to identify splice variants
+## SpliceAI_AllDelta: A deep learning-based tool to identify splice variants
 This package annotates genetic variants with their predicted effect on splicing, as described in [Jaganathan *et al*, Cell 2019 in press](https://doi.org/10.1016/j.cell.2018.12.015).
+
+This is a **modified** version for retreiving not only maximum of delta values, but all delta values.
 
 ### Installation
 The simplest way to install SpliceAI is through pip:

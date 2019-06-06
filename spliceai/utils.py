@@ -6,6 +6,11 @@ from keras.models import load_model
 import logging
 
 
+class Annotator_model:
+    def __init__(self):
+        paths = ('models/spliceai{}.h5'.format(x) for x in range(1, 6))
+        self.models = [load_model(resource_filename(__name__, x)) for x in paths]
+
 class Annotator:
 
     def __init__(self, ref_fasta, annotations):
@@ -49,6 +54,17 @@ class Annotator:
             return self.genes[idxs], self.strands[idxs], idxs
         else:
             return [], [], []
+    
+    def get_strand_chrom_and_pos(self, gene):
+
+        idxs = np.nonzero(self.genes == gene)[0]
+
+        if len(idxs) == 1:
+            pos_sum = self.tx_starts[idxs] + self.tx_ends[idxs]
+            pos_center = pos_sum // 2
+            return self.strands[idxs], self.chroms[idxs], pos_center, idxs
+        else:
+            return [], [], [], []
 
     def get_pos_data(self, idx, pos):
 
@@ -178,3 +194,64 @@ def get_delta_scores(record, ann, cov=1001):
                                 idx_nd-cov//2))
 
     return delta_scores
+
+
+def get_all_scores(seq, strand, ann_m):
+    
+    scores = []
+    x_ref = 'N'*5000+seq+'N'*5000
+    try:
+        x_ref = one_hot_encode(x_ref)[None, :]
+    except (IndexError, ValueError):
+        logging.warning('Skipping record (ATGCN issue): {}'.format(gene))
+        return scores
+    
+    if strand == '-':
+        x_ref = x_ref[:, ::-1, ::-1]
+    
+    y_ref = np.mean([ann_m.models[m].predict(x_ref) for m in range(5)], axis=0)
+    if strand == '-':
+        y_ref = y_ref[:, ::-1]
+    
+    scores = pd.DataFrame({'acceptor' : y_ref[0, :, 1], 
+                           'donor' : y_ref[0, :, 2]})
+
+    return scores
+
+def get_all_ref_scores(gene, ann):
+
+    scores = []
+
+    (strand, chrom, pos_center, idx) = ann.get_strand_chrom_and_pos(gene)
+    if len(idx) == 0:
+        logging.warning('Skipping record (gene name issue): {}'.format(gene))
+        return scores
+    dist = ann.get_pos_data(idx, pos_center)
+    cov = dist[1] - dist[0]
+    n_remove = 0
+    if cov % 2 == 0:
+        cov = cov + 1
+        n_remove = 1
+    wid = 10000+cov
+
+    try:
+        seq = ann.ref_fasta[chrom][pos_center-wid//2-1:pos_center+wid//2].seq
+    except (IndexError, ValueError):
+        logging.warning('Skipping record (fasta issue): {}'.format(gene))
+        return scores
+
+    pad_size = [max(wid//2+dist[0], 0), max(wid//2-dist[1], 0)]
+
+    x_ref = 'N'*pad_size[0]+seq[pad_size[0]:wid-pad_size[1]]+'N'*pad_size[1]
+    x_ref = one_hot_encode(x_ref)[None, :]
+    if strands[i] == '-':
+        x_ref = x_ref[:, ::-1, ::-1]
+    
+    y_ref = np.mean([ann.models[m].predict(x_ref) for m in range(5)], axis=0)
+    if strands[i] == '-':
+        y_ref = y_ref[:, ::-1]
+
+    score_a = y_ref[0: n_remove:, 1]
+    score_d = y_ref[0: n_remove:, 2]
+    scores = np.concatenate([score_a, score_d])
+    return scores

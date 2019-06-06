@@ -7,3 +7,5 @@ dist/
 .eggs/
 *.flat
 *.gdx
+.Rproj.user
+.Rhistory
